@@ -29,7 +29,6 @@ const {
   POLZA_MAX_TOKENS = '400',
   POLZA_TEMPERATURE = '0.65',
   AGENT_ID = '132466118',
-  LOG_CYCLE_EVENTS = 'true',
   PUBLIC_BASE_URL,
   ANTIZNAK_RESUME_TOKEN
 } = process.env;
@@ -199,11 +198,10 @@ async function fetchAntiznakPhotos(targetUrl) {
 
 async function handleUnpublished(owner) {
   await supabase.from('objects').delete().eq('cian_url', owner.url);
-  await supabase
-    .from('owners')
-    .update({ parsed: 'true', status: false, updated_at: new Date().toISOString() })
-    .eq('id', owner.id);
-  const text = `⚠️ <b>Объявление ${owner.url} было снято с публикации</b>`;
+  await supabase.from('owners').delete().eq('id', owner.id);
+  const text =
+    `⚠️ <b>Объявление ${owner.url} было снято с публикации</b>\n` +
+    `owners id: ${owner.id} — запись удалена`;
   await notifyLog(text);
 }
 
@@ -217,13 +215,13 @@ async function processOwner(owner) {
   try {
     parserPayload = await fetchParserPayload(owner.url);
   } catch (error) {
-    await notifyLog(`Парсер не ответил для ${owner.url}: ${error.message}`);
+    await notifyLog(`Ошибка парсинга owners ${owner.id}: парсер не ответил (${error.message})`);
     return;
   }
 
   const item = extractItem(parserPayload);
   if (!item) {
-    await notifyLog(`Парсер вернул пустой элемент для ${owner.url}`);
+    await notifyLog(`Ошибка парсинга owners ${owner.id}: парсер вернул пустой элемент`);
     return;
   }
 
@@ -243,9 +241,6 @@ async function processOwner(owner) {
   if (!balanceOk) {
     throw new Error('Баланс антизнака 0');
   }
-  const antiznakLog = `Антизнак обработал: фото ${antiznakPhotos.length}, баланс ${antiznakBalance ?? 'нет данных'}`;
-  console.log(antiznakLog);
-  await notifyLog(antiznakLog);
   const photos = mergePhotos(parserPhotos, antiznakPhotos);
   const photosData = buildPhotoMap(photos);
 
@@ -340,7 +335,9 @@ async function processOwner(owner) {
     .upsert(objectPayload, { onConflict: 'cian_url', returning: 'representation' });
 
   if (upsertResponse.error) {
-    await notifyLog(`Не удалось записать объект ${owner.url}: ${upsertResponse.error.message}`);
+    await notifyLog(
+      `Ошибка парсинга owners ${owner.id}: не удалось записать объект (${upsertResponse.error.message})`
+    );
     return;
   }
 
@@ -351,6 +348,15 @@ async function processOwner(owner) {
 
   const priceText = objectPayload.price ? formatPrice(objectPayload.price) : 'Не указана';
   const extId = upsertResponse?.data?.[0]?.external_id ?? '—';
+  const objectId = upsertResponse?.data?.[0]?.id ?? '—';
+  const successLog = [
+    '✅ Парсер дубля выполнен',
+    `owners: ${owner.id}`,
+    `objects: ${objectId} (external: ${extId})`,
+    `Баланс Антизнака: ${lastAntiznakBalance ?? 'нет данных'}`
+  ].join('\n');
+  await notifyLog(successLog);
+
   const message = [
     '🆕 <b>Новый объект в процессе публикации</b>',
     '',
@@ -363,6 +369,7 @@ async function processOwner(owner) {
 }
 
 async function sendCycleSummary(totalOwners, processed, errors, reason) {
+  if (!errors.length) return;
   const baseStatus =
     errors.length > 0
       ? `Задача не выполнена: ${errors.length} ошибка${errors.length === 1 ? '' : 'ок'}`
@@ -382,13 +389,8 @@ async function sendCycleSummary(totalOwners, processed, errors, reason) {
 }
 
 export async function runParsingCycle(context = { reason: 'scheduled' }) {
-  const logCycleEvents = LOG_CYCLE_EVENTS === 'true';
   const reasonText = context.reason || context;
   console.log(`Запуск цикла парсинга (${reasonText})`);
-  if (logCycleEvents) {
-    await notifyLog(`Запуск парсинга (${reasonText})`);
-  }
-
   const { data: owners, error } = await supabase
     .from('owners')
     .select('*')
@@ -404,9 +406,6 @@ export async function runParsingCycle(context = { reason: 'scheduled' }) {
   }
 
   if (!owners?.length) {
-    if (logCycleEvents) {
-      await notifyLog('Нет ссылок для обработки.');
-    }
     console.log('Нет объектов для обработки');
     await sendCycleSummary(0, 0, [], 'нет ссылок');
     return;
@@ -423,13 +422,10 @@ export async function runParsingCycle(context = { reason: 'scheduled' }) {
     } catch (error) {
       console.error('processOwner error', owner.id, error);
       errors.push(error);
-      await notifyLog(`Ошибка для owner ${owner.id}: ${error.message}`);
+      await notifyLog(`Ошибка парсинга owners ${owner.id}: ${error.message}`);
     }
   }
 
-  if (logCycleEvents) {
-    await notifyLog('Цикл парсинга завершён.');
-  }
   console.log('Цикл парсинга завершён');
   await sendCycleSummary(owners.length, processedCount, errors, errors.length ? 'в ходе обработки' : undefined);
 }
