@@ -48,16 +48,10 @@ async function sendTelegramMessage(token, chatId, text, options = {}) {
 }
 
 export async function notifyLog(text, options = {}) {
-  const sent = await sendTelegramMessage(LOG_BOT_TOKEN, LOG_CHAT_ID, text, {
+  await sendTelegramMessage(LOG_BOT_TOKEN, LOG_CHAT_ID, text, {
     message_thread_id: LOG_TOPIC_ID ? Number(LOG_TOPIC_ID) : undefined,
     reply_markup: options.replyMarkup
   });
-  if (!sent && STATUS_BOT_TOKEN && STATUS_CHAT_ID) {
-    await sendTelegramMessage(STATUS_BOT_TOKEN, STATUS_CHAT_ID, `Лог (fallback): ${text}`, {
-      message_thread_id: STATUS_TOPIC_ID ? Number(STATUS_TOPIC_ID) : undefined,
-      reply_markup: options.replyMarkup
-    });
-  }
 }
 
 export async function notifyStatus(text, options = {}) {
