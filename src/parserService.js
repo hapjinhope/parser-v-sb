@@ -146,6 +146,26 @@ function normalizeBalance(value) {
   return Number.isNaN(num) ? null : num;
 }
 
+function normalizePhotoList(rawPhotos) {
+  if (!rawPhotos) return [];
+  if (Array.isArray(rawPhotos)) return rawPhotos.filter(Boolean);
+  if (typeof rawPhotos === 'object') {
+    const compareKeys = (a, b) => {
+      const numA = Number(a);
+      const numB = Number(b);
+      const bothNumbers = !Number.isNaN(numA) && !Number.isNaN(numB);
+      if (bothNumbers) return numA - numB;
+      return String(a).localeCompare(String(b));
+    };
+    return Object.entries(rawPhotos)
+      .sort(([a], [b]) => compareKeys(a, b))
+      .map(([, url]) => url)
+      .filter(Boolean);
+  }
+  if (typeof rawPhotos === 'string') return [rawPhotos];
+  return [];
+}
+
 async function handleAntiznakBalance(balanceValue) {
   lastAntiznakBalance = balanceValue;
   if (balanceValue === 0) {
@@ -236,7 +256,7 @@ async function fetchAntiznakPhotos(targetUrl) {
       json?.data?.result?.photos ??
       json?.photo ??
       json?.data?.photo ??
-      (Array.isArray(json) ? json : []);
+      (Array.isArray(json) ? json : null);
     const balanceRaw =
       json?.balance ??
       json?.data?.balance ??
@@ -249,8 +269,11 @@ async function fetchAntiznakPhotos(targetUrl) {
     if (balance !== null && balance !== undefined) {
       lastAntiznakBalance = balance;
     }
-    const photos = Array.isArray(rawPhotos) ? rawPhotos.filter(Boolean) : [];
+    const photos = normalizePhotoList(rawPhotos);
     logStep(`🖼️ Антизнак вернул ${photos.length} фото, баланс ${balance ?? 'не указан'}`);
+    if (photos.length) {
+      photos.forEach((url, idx) => logStep(`🖼️ Фото ${idx + 1}: ${url}`));
+    }
     return { photos, balance };
   } catch (error) {
     logStep(`🖼️ Антизнак вернул ошибку: ${error.message}`);
@@ -317,6 +340,7 @@ async function processOwner(owner) {
   const photos = mergePhotos(storedPhotos, []);
   const photosCount = photos.length;
   logStep(`📸 Фото сохранены в Storage: ${photosCount}`);
+  photos.forEach((url, idx) => logStep(`📸 Storage фото ${idx + 1}: ${url}`));
   const photosData = buildPhotoMap(photos);
 
   const parsedPrice = parseNumber(findValue(item, 'price'));
@@ -457,6 +481,7 @@ async function processOwner(owner) {
     '',
     `👤 Собственник ID ${owner.id}`,
     `📄 Объявление ID ${extId}`,
+    `🖼️ Фото: ${photosCount}`,
     `📍 Адрес: ${objectPayload.address}`,
     `💰 Цена: ${priceText}`,
     `🔗 Ссылка: <a href="${owner.url}">Открыть объявление</a>`
@@ -518,7 +543,9 @@ export async function runParsingCycle(context = { reason: 'scheduled' }) {
   const errors = [];
   logStep(`⚙️ Обрабатывается ${owners.length} объектов`);
 
+  let halted = false;
   for (const owner of owners) {
+    if (halted) break;
     try {
       await processOwner(owner);
       processedCount += 1;
@@ -527,6 +554,9 @@ export async function runParsingCycle(context = { reason: 'scheduled' }) {
       const errMessage = `owners ${owner.id}: ${error.message}`;
       errors.push(errMessage);
       await notifyLog(`Ошибка парсинга owners ${owner.id}: ${error.message}`);
+      if (error.message === 'Нет фото от Антизнака') {
+        halted = true;
+      }
     }
   }
 
