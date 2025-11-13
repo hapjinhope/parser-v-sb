@@ -312,7 +312,7 @@ async function processOwner(owner) {
   });
   logStep(`✍️ Описание сгенерировано для owners ${owner.id}`);
 
-  const objectPayload = {
+  const payload = {
     owners_id: owner.id,
     address: findValue(item, 'address') || owner.url,
     description,
@@ -362,7 +362,11 @@ async function processOwner(owner) {
     category: 'flatRent'
   };
 
-  const objectsResponse = await supabase.from('objects').insert(objectPayload).select('external_id, owners_id').single();
+  const objectsResponse = await supabase
+    .from('objects')
+    .insert(payload)
+    .select('external_id, owners_id')
+    .single();
 
   if (objectsResponse.error) {
     await notifyLog(
