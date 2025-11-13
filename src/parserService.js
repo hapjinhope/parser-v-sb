@@ -75,7 +75,6 @@ async function uploadPhotosToStorage(photoUrls, ownerId) {
 }
 
 async function uploadSinglePhoto(sourceUrl, ownerId, index) {
-  logStep(`🗂️ Загружаю фото в Storage: ${sourceUrl}`);
   try {
     const response = await fetch(sourceUrl);
     if (!response.ok) {
@@ -85,13 +84,13 @@ async function uploadSinglePhoto(sourceUrl, ownerId, index) {
     const buffer = Buffer.from(arrayBuffer);
     const contentType = response.headers.get('content-type') || 'image/jpeg';
     const extension = getExtensionFromUrl(sourceUrl, contentType);
-    const fileName = `${ownerId}/${Date.now()}-${index}.${extension}`;
+    const sequenceNumber = index + 1;
+    const fileName = `${ownerId}/${sequenceNumber}.${extension}`;
     const upload = await supabase.storage
       .from(SUPABASE_STORAGE_BUCKET)
       .upload(fileName, buffer, { contentType, upsert: true });
     if (upload.error) throw upload.error;
     const publicUrl = `${storagePublicBase}/${SUPABASE_STORAGE_BUCKET}/${fileName}`;
-    logStep(`🗂️ Фото сохранено в Storage: ${publicUrl}`);
     return publicUrl;
   } catch (error) {
     logStep(`🗂️ Ошибка загрузки фото в Storage: ${error.message}`);
@@ -271,9 +270,6 @@ async function fetchAntiznakPhotos(targetUrl) {
     }
     const photos = normalizePhotoList(rawPhotos);
     logStep(`🖼️ Антизнак вернул ${photos.length} фото, баланс ${balance ?? 'не указан'}`);
-    if (photos.length) {
-      photos.forEach((url, idx) => logStep(`🖼️ Фото ${idx + 1}: ${url}`));
-    }
     return { photos, balance };
   } catch (error) {
     logStep(`🖼️ Антизнак вернул ошибку: ${error.message}`);
@@ -339,8 +335,15 @@ async function processOwner(owner) {
   const storedPhotos = await uploadPhotosToStorage(antiznakPhotos, owner.id);
   const photos = mergePhotos(storedPhotos, []);
   const photosCount = photos.length;
-  logStep(`📸 Фото сохранены в Storage: ${photosCount}`);
-  photos.forEach((url, idx) => logStep(`📸 Storage фото ${idx + 1}: ${url}`));
+  if (photosCount > 0) {
+    logStep(
+      `📸 Фото сохранены в Storage (${photosCount} шт.) — пример: ${photos[0]}${
+        photosCount > 1 ? ' …' : ''
+      }`
+    );
+  } else {
+    logStep('📸 Фото в Storage отсутствуют');
+  }
   const photosData = buildPhotoMap(photos);
 
   const parsedPrice = parseNumber(findValue(item, 'price'));
@@ -468,11 +471,11 @@ async function processOwner(owner) {
   const extId = objectsResponse.data?.external_id ?? '—';
   const successLog = [
     '✅ Парсер дубля выполнен',
-    `Собственник ID ${owner.id}`,
-    `Дубль ID ${extId}`,
-    `Фото: ${photosCount}`,
-    `Баланс Антизнака: ${lastAntiznakBalance ?? 'нет данных'}`,
-    'Процесс парсинга прошёл без ошибок'
+    `👤 Собственник ID ${owner.id}`,
+    `📄 Дубль ID ${extId}`,
+    `🖼️ Фото: ${photosCount}`,
+    `💰 Баланс Антизнака: ${lastAntiznakBalance ?? 'нет данных'}`,
+    '✨ Процесс парсинга прошёл без ошибок'
   ].join('\n');
   await notifyLog(successLog);
 
