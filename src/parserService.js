@@ -281,6 +281,7 @@ async function processOwner(owner) {
   });
 
   const objectPayload = {
+    owners_id: owner.id,
     address: findValue(item, 'address') || owner.url,
     description,
     floor: parseInt(findValue(item, 'floor'), 10) || null,
@@ -330,13 +331,11 @@ async function processOwner(owner) {
     category: 'flatRent'
   };
 
-  const upsertResponse = await supabase
-    .from('objects')
-    .upsert(objectPayload, { onConflict: 'cian_url', returning: 'representation' });
+  const objectsResponse = await supabase.from('objects').insert(objectPayload).select('id, external_id').single();
 
-  if (upsertResponse.error) {
+  if (objectsResponse.error) {
     await notifyLog(
-      `Ошибка парсинга owners ${owner.id}: не удалось записать объект (${upsertResponse.error.message})`
+      `Ошибка парсинга owners ${owner.id}: не удалось записать объект (${objectsResponse.error.message})`
     );
     return;
   }
@@ -347,8 +346,8 @@ async function processOwner(owner) {
     .eq('id', owner.id);
 
   const priceText = objectPayload.price ? formatPrice(objectPayload.price) : 'Не указана';
-  const extId = upsertResponse?.data?.[0]?.external_id ?? '—';
-  const objectId = upsertResponse?.data?.[0]?.id ?? '—';
+  const extId = objectsResponse.data?.external_id ?? '—';
+  const objectId = objectsResponse.data?.id ?? '—';
   const successLog = [
     '✅ Парсер дубля выполнен',
     `owners: ${owner.id}`,
