@@ -253,10 +253,25 @@ async function processOwner(owner) {
   const kitchenAreaRounded = roundArea(findValue(item, 'kitchen_area'));
 
   const totalAreaNum = typeof totalAreaRounded === 'number' ? totalAreaRounded : parseNumber(totalAreaRounded);
-  const livingAreaNum =
+  const livingAreaNumRaw =
     typeof livingAreaRounded === 'number' ? livingAreaRounded : parseNumber(livingAreaRounded);
   const kitchenAreaNum =
     typeof kitchenAreaRounded === 'number' ? kitchenAreaRounded : parseNumber(kitchenAreaRounded);
+
+  let livingAreaNum = livingAreaNumRaw;
+  if (
+    typeof totalAreaNum === 'number' &&
+    typeof livingAreaNum === 'number' &&
+    typeof kitchenAreaNum === 'number'
+  ) {
+    const remainder = totalAreaNum - (livingAreaNum + kitchenAreaNum);
+    if (remainder < 0) {
+      const adjustment = Math.abs(remainder);
+      livingAreaNum = Math.max(0, livingAreaNum - adjustment);
+    } else if (remainder === 0) {
+      livingAreaNum = Math.max(0, livingAreaNum - 5);
+    }
+  }
 
   const bathroom = findValue(item, 'bathroom') || '';
   const { combined, separate } = parseBathrooms(bathroom);
@@ -331,7 +346,7 @@ async function processOwner(owner) {
     category: 'flatRent'
   };
 
-  const objectsResponse = await supabase.from('objects').insert(objectPayload).select('id, external_id').single();
+  const objectsResponse = await supabase.from('objects').insert(objectPayload).select('external_id, owners_id').single();
 
   if (objectsResponse.error) {
     await notifyLog(
@@ -347,11 +362,10 @@ async function processOwner(owner) {
 
   const priceText = objectPayload.price ? formatPrice(objectPayload.price) : 'Не указана';
   const extId = objectsResponse.data?.external_id ?? '—';
-  const objectId = objectsResponse.data?.id ?? '—';
   const successLog = [
     '✅ Парсер дубля выполнен',
     `owners: ${owner.id}`,
-    `objects: ${objectId} (external: ${extId})`,
+    `external_id: ${extId}`,
     `Баланс Антизнака: ${lastAntiznakBalance ?? 'нет данных'}`
   ].join('\n');
   await notifyLog(successLog);
