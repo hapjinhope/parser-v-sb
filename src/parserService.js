@@ -364,7 +364,7 @@ async function processOwner(owner) {
 
   const objectsResponse = await supabase
     .from('objects')
-    .insert(payload)
+    .insert(objectPayload)
     .select('external_id, owners_id')
     .single();
 
@@ -424,13 +424,9 @@ async function sendCycleSummary(totalOwners, processed, errors, reason) {
   }
 
   if (totalOwners === 0) {
-    const message = [
-      'ℹ️ Процесс парсинга не выполнен',
-      `Причина: ${reason ?? 'нет ссылок для обработки'}`,
-      balanceLine
-    ].join('\n');
-    await notifyLog(message);
-    console.log(`Итог цикла:\n${message}`);
+    console.log(
+      `ℹ️ Процесс парсинга не выполнен (${reason ?? 'нет ссылок для обработки'}) | ${balanceLine}`
+    );
   }
 }
 
