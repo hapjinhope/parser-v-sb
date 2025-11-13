@@ -4,6 +4,8 @@ import { notifyLog } from './notifications.js';
 
 const cache = new Map();
 const DATA_PLACEHOLDER = '{{DATA_JSON}}';
+const SYSTEM_PROMPT =
+  'Ты — опытный копирайтер в сфере недвижимости. Пиши структурировано, дружелюбно и без повтора исходного JSON.';
 
 function buildContext(item, owner) {
   const address = item?.address || owner?.url || 'Адрес не указан';
@@ -85,9 +87,13 @@ export async function generateDescription(item = {}, owner = {}, options = {}) {
   const jsonData = JSON.stringify(buildContext(item, owner), null, 2);
   const prompt = promptTemplate.replace(DATA_PLACEHOLDER, jsonData);
 
+  const endpoint = buildPolzaEndpoint(options.apiUrl);
   const payload = {
     model: options.model ?? 'polza-1',
-    prompt,
+    messages: [
+      { role: 'system', content: SYSTEM_PROMPT },
+      { role: 'user', content: prompt }
+    ],
     max_tokens: options.maxTokens ?? 400,
     temperature: options.temperature ?? 0.65
   };
@@ -101,20 +107,13 @@ export async function generateDescription(item = {}, owner = {}, options = {}) {
     body: JSON.stringify(payload)
   };
 
-  const attemptRequest = async url => {
-    console.log(`🧠 Отправляю запрос в Polza AI: ${url}`);
-    const response = await fetch(url, requestOptions);
-    return response;
-  };
-
   try {
-    let response = await attemptRequest(options.apiUrl);
+    console.log(`🧠 Отправляю запрос в Polza AI: ${endpoint}`);
+    let response = await fetch(endpoint, requestOptions);
     if (response.status === 404) {
-      const fallbackUrl = options.apiUrl.replace(/\/generate$/, '');
-      if (fallbackUrl !== options.apiUrl) {
-        console.log('🧠 Polza AI 404, пробуем альтернативный endpoint');
-        response = await attemptRequest(fallbackUrl);
-      }
+      const fallbackUrl = `${new URL(endpoint).origin}/v1/chat/completions`;
+      console.log('🧠 Polza AI 404, пробуем стандартный endpoint');
+      response = await fetch(fallbackUrl, requestOptions);
     }
     if (!response.ok) throw new Error(`Polza AI ${response.status}`);
     const json = await response.json();
@@ -131,5 +130,19 @@ export async function generateDescription(item = {}, owner = {}, options = {}) {
     await notifyLog(`Polza AI ошибка: ${error.message}`);
     console.log('🧠 Polza AI ошибка:', error.message);
     return fallback;
+  }
+}
+
+function buildPolzaEndpoint(rawUrl = '') {
+  try {
+    const url = rawUrl ? new URL(rawUrl) : new URL('https://api.polza.ai/v1/chat/completions');
+    if (url.pathname.includes('/chat/completions')) return url.toString();
+    url.pathname = url.pathname.replace(/\/text(\/generate)?$/, '/chat/completions');
+    if (!url.pathname.endsWith('/chat/completions')) {
+      url.pathname = `${url.pathname.replace(/\/$/, '')}/chat/completions`;
+    }
+    return url.toString();
+  } catch {
+    return 'https://api.polza.ai/v1/chat/completions';
   }
 }

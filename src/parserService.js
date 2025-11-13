@@ -313,6 +313,7 @@ async function processOwner(owner) {
   logStep(`✍️ Описание сгенерировано для owners ${owner.id}`);
 
   const objectPayload = {
+    object_id: owner.id,
     owners_id: owner.id,
     address: findValue(item, 'address') || owner.url,
     description,
@@ -392,10 +393,11 @@ async function processOwner(owner) {
   const message = [
     '🆕 <b>Новый объект в процессе публикации</b>',
     '',
-    `📄 <b>Объявление №${extId}</b>`,
-    `📍 <b>Адрес:</b> ${objectPayload.address}`,
-    `💰 <b>Цена:</b> ${priceText}`,
-    `🔗 <b>Ссылка:</b> <a href="${owner.url}">Открыть объявление</a>`
+    `👤 Собственник ID ${owner.id}`,
+    `📄 Объявление ID ${extId}`,
+    `📍 Адрес: ${objectPayload.address}`,
+    `💰 Цена: ${priceText}`,
+    `🔗 Ссылка: <a href="${owner.url}">Открыть объявление</a>`
   ].join('\n');
   await notifyStatus(message);
   logStep(`📣 Отправлено уведомление в статус-чат для owners ${owner.id}`);
