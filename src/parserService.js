@@ -123,8 +123,8 @@ function buildPhotoMap(photos) {
   return { mainPhotoUrl, photosJson };
 }
 
-function extractItem(objectPayload) {
-  if (!objectPayload) return null;
+function extractItem(payload) {
+  if (!payload) return null;
   if (Array.isArray(payload.items) && payload.items.length > 0) {
     return payload.items[0];
   }
