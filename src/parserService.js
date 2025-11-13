@@ -208,7 +208,7 @@ async function fetchAntiznakPhotos(targetUrl) {
 }
 
 async function handleUnpublished(owner) {
-  await supabase.from('objects').delete().eq('cian_url', owner.url);
+  await supabase.from('objects').delete().eq('owners_id', owner.id);
   await supabase.from('owners').delete().eq('id', owner.id);
   const text =
     `⚠️ <b>Объявление ${owner.url} было снято с публикации</b>\n` +
@@ -343,7 +343,6 @@ async function processOwner(owner) {
     parking,
     status: 'draft',
     type,
-    cian_url: owner.url,
     children: true,
     pets: true,
     layout: 'Смежно-Изолированная',
@@ -384,11 +383,11 @@ async function processOwner(owner) {
     '✅ Парсер дубля выполнен',
     `Собственник: ${owner.id}`,
     `Дубль: ${extId}`,
-    `Фото всего: ${photosCount}`,
     `Баланс Антизнака: ${lastAntiznakBalance ?? 'нет данных'}`,
     'Процесс парсинга прошёл без ошибок'
   ].join('\n');
   await notifyLog(successLog);
+  logStep(`📸 Фото всего: ${photosCount}`);
 
   const message = [
     '🆕 <b>Новый объект в процессе публикации</b>',

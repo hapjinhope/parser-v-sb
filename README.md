@@ -11,7 +11,7 @@ This utility runs as a lightweight scheduler + webhook receiver. It looks for en
 - `SUPABASE_SERVICE_ROLE_KEY` – service-role key with insert/update/delete permissions.
 - `SUPABASE_WEBHOOK_SECRET` – the exact value Supabase will add to `x-supabase-signature` when calling the webhook.
 - `WEBHOOK_PORT` – port for the Express webhook + scheduler server (default 3000).
-- `CHECK_INTERVAL_MS` – poll interval for the background worker (default 300000 = 5 minutes).
+- `CHECK_INTERVAL_MS` – poll interval for the background worker (default 60000 = 1 minute).
 - `PARSER_ENDPOINT` – URL of the general-purpose parser service.
 - `ANTIZNAK_API_URL` – Antiznak photo endpoint.
 - `ANTIZNAK_API_KEY` – API key for Antiznak (`DYD477UFJ5` or your own value).
