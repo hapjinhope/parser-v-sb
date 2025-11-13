@@ -123,8 +123,8 @@ function buildPhotoMap(photos) {
   return { mainPhotoUrl, photosJson };
 }
 
-function extractItem(payload) {
-  if (!payload) return null;
+function extractItem(objectPayload) {
+  if (!objectPayload) return null;
   if (Array.isArray(payload.items) && payload.items.length > 0) {
     return payload.items[0];
   }
@@ -312,7 +312,7 @@ async function processOwner(owner) {
   });
   logStep(`✍️ Описание сгенерировано для owners ${owner.id}`);
 
-  const payload = {
+  const objectPayload = {
     owners_id: owner.id,
     address: findValue(item, 'address') || owner.url,
     description,
