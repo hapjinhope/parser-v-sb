@@ -92,16 +92,30 @@ export async function generateDescription(item = {}, owner = {}, options = {}) {
     temperature: options.temperature ?? 0.65
   };
 
+  const requestOptions = {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${options.apiKey}`
+    },
+    body: JSON.stringify(payload)
+  };
+
+  const attemptRequest = async url => {
+    console.log(`🧠 Отправляю запрос в Polza AI: ${url}`);
+    const response = await fetch(url, requestOptions);
+    return response;
+  };
+
   try {
-    console.log('🧠 Отправляю запрос в Polza AI');
-    const response = await fetch(options.apiUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${options.apiKey}`
-      },
-      body: JSON.stringify(payload)
-    });
+    let response = await attemptRequest(options.apiUrl);
+    if (response.status === 404) {
+      const fallbackUrl = options.apiUrl.replace(/\/generate$/, '');
+      if (fallbackUrl !== options.apiUrl) {
+        console.log('🧠 Polza AI 404, пробуем альтернативный endpoint');
+        response = await attemptRequest(fallbackUrl);
+      }
+    }
     if (!response.ok) throw new Error(`Polza AI ${response.status}`);
     const json = await response.json();
     console.log('🧠 Получен ответ от Polza AI');

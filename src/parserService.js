@@ -256,6 +256,8 @@ async function processOwner(owner) {
     throw new Error('Баланс антизнака 0');
   }
   const photos = mergePhotos(parserPhotos, antiznakPhotos);
+  const photosCount = photos.length;
+  logStep(`📸 После объединения всего ${photosCount} фото`);
   const photosData = buildPhotoMap(photos);
 
   const parsedPrice = parseNumber(findValue(item, 'price'));
@@ -380,9 +382,11 @@ async function processOwner(owner) {
   const extId = objectsResponse.data?.external_id ?? '—';
   const successLog = [
     '✅ Парсер дубля выполнен',
-    `owners: ${owner.id}`,
-    `external_id: ${extId}`,
-    `Баланс Антизнака: ${lastAntiznakBalance ?? 'нет данных'}`
+    `Собственник: ${owner.id}`,
+    `Дубль: ${extId}`,
+    `Фото всего: ${photosCount}`,
+    `Баланс Антизнака: ${lastAntiznakBalance ?? 'нет данных'}`,
+    'Процесс парсинга прошёл без ошибок'
   ].join('\n');
   await notifyLog(successLog);
 
@@ -399,23 +403,31 @@ async function processOwner(owner) {
 }
 
 async function sendCycleSummary(totalOwners, processed, errors, reason) {
-  if (!errors.length) return;
-  const baseStatus =
-    errors.length > 0
-      ? `Задача не выполнена: ${errors.length} ошибка${errors.length === 1 ? '' : 'ок'}`
-      : `Задача выполнена${processed ? ` (${processed} объектов)` : ''}`;
-  const reasonSuffix = reason ? ` (${reason})` : '';
   const balanceLine =
     lastAntiznakBalance !== null && lastAntiznakBalance !== undefined
-      ? `Антизнак баланс: ${lastAntiznakBalance}`
-      : 'Антизнак баланс: нет данных';
-  const message = [
-    `${baseStatus}${reasonSuffix}`,
-    `Всего проверено: ${totalOwners}, успешно: ${processed}, с ошибками: ${errors.length}`,
-    balanceLine
-  ].join('\n');
-  await notifyLog(message);
-  console.log(`Итог цикла:\n${message}`);
+      ? `Баланс Антизнака: ${lastAntiznakBalance}`
+      : 'Баланс Антизнака: нет данных';
+
+  if (errors.length > 0) {
+    const message = [
+      '❌ Процесс парсинга прошёл с ошибкой',
+      `Причина: ${reason ?? 'см. логи'}`,
+      balanceLine
+    ].join('\n');
+    await notifyLog(message);
+    console.log(`Итог цикла:\n${message}`);
+    return;
+  }
+
+  if (totalOwners === 0) {
+    const message = [
+      'ℹ️ Процесс парсинга не выполнен',
+      `Причина: ${reason ?? 'нет ссылок для обработки'}`,
+      balanceLine
+    ].join('\n');
+    await notifyLog(message);
+    console.log(`Итог цикла:\n${message}`);
+  }
 }
 
 export async function runParsingCycle(context = { reason: 'scheduled' }) {
