@@ -400,7 +400,7 @@ async function processOwner(owner) {
     loggias: Number.isFinite(loggiaCount) ? loggiaCount : null,
     ceiling_height: parseInt(findValue(item, 'ceiling_height'), 10) || null,
     parking,
-    status: 'draft',
+    status: 'published',
     type,
     children: true,
     pets: true,
@@ -444,13 +444,13 @@ async function processOwner(owner) {
   const extId = objectsResponse.data?.external_id ?? '—';
   const successLog = [
     '✅ Парсер дубля выполнен',
-    `Собственник: ${owner.id}`,
-    `Дубль: ${extId}`,
+    `Собственник ID ${owner.id}`,
+    `Дубль ID ${extId}`,
+    `Фото: ${photosCount}`,
     `Баланс Антизнака: ${lastAntiznakBalance ?? 'нет данных'}`,
     'Процесс парсинга прошёл без ошибок'
   ].join('\n');
   await notifyLog(successLog);
-  logStep(`📸 Фото всего: ${photosCount}`);
 
   const message = [
     '🆕 <b>Новый объект в процессе публикации</b>',
@@ -472,9 +472,11 @@ async function sendCycleSummary(totalOwners, processed, errors, reason) {
       : 'Баланс Антизнака: нет данных';
 
   if (errors.length > 0) {
+    const details = errors.join('; ');
     const message = [
       '❌ Процесс парсинга прошёл с ошибкой',
       `Причина: ${reason ?? 'см. логи'}`,
+      `Детали: ${details}`,
       balanceLine
     ].join('\n');
     await notifyLog(message);
@@ -502,7 +504,7 @@ export async function runParsingCycle(context = { reason: 'scheduled' }) {
   if (error) {
     console.error('Supabase owners read error', error);
     await notifyLog(`Не удалось прочитать owners: ${error.message}`);
-    await sendCycleSummary(0, 0, [error], 'ошибка при чтении owners');
+    await sendCycleSummary(0, 0, [`Ошибка чтения owners: ${error.message}`], 'ошибка при чтении owners');
     return;
   }
 
@@ -522,7 +524,8 @@ export async function runParsingCycle(context = { reason: 'scheduled' }) {
       processedCount += 1;
     } catch (error) {
       console.error('processOwner error', owner.id, error);
-      errors.push(error);
+      const errMessage = `owners ${owner.id}: ${error.message}`;
+      errors.push(errMessage);
       await notifyLog(`Ошибка парсинга owners ${owner.id}: ${error.message}`);
     }
   }
