@@ -1,5 +1,6 @@
 import dotenv from 'dotenv';
 import fetch from 'node-fetch';
+import { Buffer } from 'node:buffer';
 import { createClient } from '@supabase/supabase-js';
 import {
   findValue,
@@ -30,7 +31,8 @@ const {
   POLZA_TEMPERATURE = '0.65',
   AGENT_ID = '132466118',
   PUBLIC_BASE_URL,
-  ANTIZNAK_RESUME_TOKEN
+  ANTIZNAK_RESUME_TOKEN,
+  SUPABASE_STORAGE_BUCKET
 } = process.env;
 
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
@@ -43,6 +45,7 @@ const agentId = parseInt(AGENT_ID, 10) || 132466118;
 let antiznakPaused = false;
 let lastAntiznakBalance = null;
 const sanitizedBaseUrl = PUBLIC_BASE_URL ? PUBLIC_BASE_URL.replace(/\/+$/, '') : null;
+const storagePublicBase = SUPABASE_URL ? `${SUPABASE_URL.replace(/\/+$/, '')}/storage/v1/object/public` : null;
 
 function logStep(message) {
   const timestamp = new Date().toLocaleTimeString('ru-RU', { hour12: false });
@@ -54,6 +57,55 @@ function buildResumeUrl() {
   const url = new URL('/antiznak/resume', sanitizedBaseUrl);
   url.searchParams.set('token', ANTIZNAK_RESUME_TOKEN);
   return url.toString();
+}
+
+async function uploadPhotosToStorage(photoUrls, ownerId) {
+  if (!SUPABASE_STORAGE_BUCKET || !storagePublicBase) {
+    logStep('⚠️ Бакет Supabase Storage не настроен — сохраняю прямые ссылки Antiznak.');
+    return photoUrls;
+  }
+
+  const storedUrls = [];
+  for (let index = 0; index < photoUrls.length; index += 1) {
+    const url = photoUrls[index];
+    const stored = await uploadSinglePhoto(url, ownerId, index);
+    storedUrls.push(stored);
+  }
+  return storedUrls;
+}
+
+async function uploadSinglePhoto(sourceUrl, ownerId, index) {
+  logStep(`🗂️ Загружаю фото в Storage: ${sourceUrl}`);
+  try {
+    const response = await fetch(sourceUrl);
+    if (!response.ok) {
+      throw new Error(`Antiznak фото недоступно (${response.status})`);
+    }
+    const arrayBuffer = await response.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+    const contentType = response.headers.get('content-type') || 'image/jpeg';
+    const extension = getExtensionFromUrl(sourceUrl, contentType);
+    const fileName = `${ownerId}/${Date.now()}-${index}.${extension}`;
+    const upload = await supabase.storage
+      .from(SUPABASE_STORAGE_BUCKET)
+      .upload(fileName, buffer, { contentType, upsert: true });
+    if (upload.error) throw upload.error;
+    const publicUrl = `${storagePublicBase}/${SUPABASE_STORAGE_BUCKET}/${fileName}`;
+    logStep(`🗂️ Фото сохранено в Storage: ${publicUrl}`);
+    return publicUrl;
+  } catch (error) {
+    logStep(`🗂️ Ошибка загрузки фото в Storage: ${error.message}`);
+    await notifyLog(`Не удалось сохранить фото Antiznak: ${error.message}`);
+    throw error;
+  }
+}
+
+function getExtensionFromUrl(url, contentType) {
+  const match = url.match(/\.([a-zA-Z0-9]+)(?:\?|$)/);
+  if (match) return match[1];
+  if (contentType.includes('png')) return 'png';
+  if (contentType.includes('webp')) return 'webp';
+  return 'jpg';
 }
 
 async function notifyAntiznakPause() {
@@ -256,15 +308,15 @@ async function processOwner(owner) {
     throw new Error('Баланс антизнака 0');
   }
   if (antiznakPhotos.length === 0) {
-    const pauseMessage = '🚫 Антизнак не вернул фото — парсинг остановлен до пополнения/разрешения.';
-    logStep(pauseMessage);
-    await notifyLog(pauseMessage);
-    await handleAntiznakBalance(0);
+    const warningMessage = '⚠️ Антизнак не вернул фото — парсинг остановлен до проверки.';
+    logStep(warningMessage);
+    await notifyLog(warningMessage);
     throw new Error('Нет фото от Антизнака');
   }
-  const photos = mergePhotos(antiznakPhotos, parserPhotos);
+  const storedPhotos = await uploadPhotosToStorage(antiznakPhotos, owner.id);
+  const photos = mergePhotos(storedPhotos, []);
   const photosCount = photos.length;
-  logStep(`📸 Используются только фото Антизнака: ${photosCount}`);
+  logStep(`📸 Фото сохранены в Storage: ${photosCount}`);
   const photosData = buildPhotoMap(photos);
 
   const parsedPrice = parseNumber(findValue(item, 'price'));

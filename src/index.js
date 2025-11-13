@@ -59,7 +59,7 @@ app.get('/antiznak/resume', async (req, res) => {
     return res.status(403).json({ error: 'invalid token' });
   }
   await manualResumeAntiznak();
-  res.json({ status: 'resumed' });
+  res.json({ status: 'Парсер перезапущен. Можно продолжать.' });
 });
 
 app.listen(PORT, () => {
