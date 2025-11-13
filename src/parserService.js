@@ -313,7 +313,6 @@ async function processOwner(owner) {
   logStep(`✍️ Описание сгенерировано для owners ${owner.id}`);
 
   const objectPayload = {
-    object_id: owner.id,
     owners_id: owner.id,
     address: findValue(item, 'address') || owner.url,
     description,
