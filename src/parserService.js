@@ -255,9 +255,16 @@ async function processOwner(owner) {
   if (!balanceOk) {
     throw new Error('Баланс антизнака 0');
   }
-  const photos = mergePhotos(parserPhotos, antiznakPhotos);
+  if (antiznakPhotos.length === 0) {
+    const pauseMessage = '🚫 Антизнак не вернул фото — парсинг остановлен до пополнения/разрешения.';
+    logStep(pauseMessage);
+    await notifyLog(pauseMessage);
+    await handleAntiznakBalance(0);
+    throw new Error('Нет фото от Антизнака');
+  }
+  const photos = mergePhotos(antiznakPhotos, parserPhotos);
   const photosCount = photos.length;
-  logStep(`📸 После объединения всего ${photosCount} фото`);
+  logStep(`📸 Используются только фото Антизнака: ${photosCount}`);
   const photosData = buildPhotoMap(photos);
 
   const parsedPrice = parseNumber(findValue(item, 'price'));
