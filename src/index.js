@@ -26,9 +26,7 @@ async function triggerCycle(reason) {
   if (isRunning) return;
   isRunning = true;
   const reasonLabel = formatReason(reason);
-  const preCheckMessage = `Проверка owners с parsed=false запущена (${reasonLabel}).`;
-  console.log(preCheckMessage);
-  await notifyLog(preCheckMessage);
+  console.log(`Проверка owners с parsed=false запущена (${reasonLabel}).`);
   try {
     await runParsingCycle({ reason: reasonLabel });
   } finally {
@@ -44,7 +42,6 @@ app.post('/webhook', async (req, res) => {
   const ownerId = req.body?.owner_id;
   const message = `Webhook triggered (${ownerId ?? 'owner unknown'})`;
   console.log(message);
-  await notifyLog(message);
   triggerCycle('webhook');
   res.json({ status: 'scheduled' });
 });

@@ -44,6 +44,11 @@ let antiznakPaused = false;
 let lastAntiznakBalance = null;
 const sanitizedBaseUrl = PUBLIC_BASE_URL ? PUBLIC_BASE_URL.replace(/\/+$/, '') : null;
 
+function logStep(message) {
+  const timestamp = new Date().toLocaleTimeString('ru-RU', { hour12: false });
+  console.log(`🕒 ${timestamp} | ${message}`);
+}
+
 function buildResumeUrl() {
   if (!sanitizedBaseUrl || !ANTIZNAK_RESUME_TOKEN) return null;
   const url = new URL('/antiznak/resume', sanitizedBaseUrl);
@@ -53,6 +58,7 @@ function buildResumeUrl() {
 
 async function notifyAntiznakPause() {
   const resumeUrl = buildResumeUrl();
+  logStep('⛔ Баланс антизнака равен 0 — ставлю парсер на паузу.');
   const message =
     '🚨 Парсер в СБ\n' +
     'Баланс антизнака 0 — публикации остановлены, нужно пополнить баланс.\n' +
@@ -74,6 +80,7 @@ async function notifyAntiznakPause() {
 
 async function resumeAntiznakProcessing(manual = false) {
   antiznakPaused = false;
+  logStep('💡 Баланс антизнака обновился, продолжаю работу.');
   await notifyLog(
     manual
       ? '✅ Баланс антизнака пополнен, публикации возобновлены.'
@@ -126,6 +133,7 @@ function extractItem(payload) {
 }
 
 async function fetchParserPayload(url) {
+  logStep('🛰️ Запрашиваю данные у внешнего парсера');
   const response = await fetch(PARSER_ENDPOINT, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -134,10 +142,12 @@ async function fetchParserPayload(url) {
   if (!response.ok) {
     throw new Error(`Parser ${response.status}`);
   }
+  logStep('🛰️ Данные от внешнего парсера получены');
   return response.json();
 }
 
 async function fetchAntiznakPhotos(targetUrl) {
+  logStep('🖼️ Запрашиваю фото и баланс у Антизнака');
   if (!ANTIZNAK_API_KEY || !targetUrl) {
     return { photos: [], balance: null };
   }
@@ -154,6 +164,7 @@ async function fetchAntiznakPhotos(targetUrl) {
       throw new Error(`Antiznak ${response.status}`);
     }
     const json = await response.json();
+    logStep('🖼️ Ответ Антизнака получен');
     if (json?.status === 'error') {
       const errText = json?.text ?? 'ошибка Antiznak';
       const errCode = json?.err_code ?? '0';
@@ -186,11 +197,11 @@ async function fetchAntiznakPhotos(targetUrl) {
     if (balance !== null && balance !== undefined) {
       lastAntiznakBalance = balance;
     }
-    return {
-      photos: Array.isArray(rawPhotos) ? rawPhotos.filter(Boolean) : [],
-      balance
-    };
+    const photos = Array.isArray(rawPhotos) ? rawPhotos.filter(Boolean) : [];
+    logStep(`🖼️ Антизнак вернул ${photos.length} фото, баланс ${balance ?? 'не указан'}`);
+    return { photos, balance };
   } catch (error) {
+    logStep(`🖼️ Антизнак вернул ошибку: ${error.message}`);
     await notifyLog(`Антизнак не ответил: ${error.message}`);
     return { photos: [], balance: null };
   }
@@ -211,9 +222,12 @@ async function processOwner(owner) {
     return;
   }
 
+  logStep(`📬 Начинаю обработку owners ${owner.id}`);
+
   let parserPayload;
   try {
     parserPayload = await fetchParserPayload(owner.url);
+    logStep(`🧾 Получены данные внешнего парсера для owners ${owner.id}`);
   } catch (error) {
     await notifyLog(`Ошибка парсинга owners ${owner.id}: парсер не ответил (${error.message})`);
     return;
@@ -294,6 +308,7 @@ async function processOwner(owner) {
     maxTokens: Number(POLZA_MAX_TOKENS) || 400,
     temperature: Number(POLZA_TEMPERATURE) || 0.65
   });
+  logStep(`✍️ Описание сгенерировано для owners ${owner.id}`);
 
   const objectPayload = {
     owners_id: owner.id,
@@ -354,6 +369,7 @@ async function processOwner(owner) {
     );
     return;
   }
+  logStep(`💾 Запись в objects создана для owners ${owner.id}`);
 
   await supabase
     .from('owners')
@@ -379,6 +395,7 @@ async function processOwner(owner) {
     `🔗 <b>Ссылка:</b> <a href="${owner.url}">Открыть объявление</a>`
   ].join('\n');
   await notifyStatus(message);
+  logStep(`📣 Отправлено уведомление в статус-чат для owners ${owner.id}`);
 }
 
 async function sendCycleSummary(totalOwners, processed, errors, reason) {
@@ -403,13 +420,13 @@ async function sendCycleSummary(totalOwners, processed, errors, reason) {
 
 export async function runParsingCycle(context = { reason: 'scheduled' }) {
   const reasonText = context.reason || context;
-  console.log(`Запуск цикла парсинга (${reasonText})`);
+  logStep(`🚀 Запуск цикла парсинга (${reasonText})`);
   const { data: owners, error } = await supabase
     .from('owners')
     .select('*')
     .ilike('parsed', 'false')
     .limit(20);
-  console.log(`Найдено owners с parsed=false: ${owners?.length ?? 0}`);
+  logStep(`🔎 Найдено owners с parsed=false: ${owners?.length ?? 0}`);
 
   if (error) {
     console.error('Supabase owners read error', error);
@@ -419,14 +436,14 @@ export async function runParsingCycle(context = { reason: 'scheduled' }) {
   }
 
   if (!owners?.length) {
-    console.log('Нет объектов для обработки');
+    logStep('📭 Нет объектов для обработки');
     await sendCycleSummary(0, 0, [], 'нет ссылок');
     return;
   }
 
   let processedCount = 0;
   const errors = [];
-  console.log(`Обрабатывается ${owners.length} объектов`);
+  logStep(`⚙️ Обрабатывается ${owners.length} объектов`);
 
   for (const owner of owners) {
     try {
@@ -439,6 +456,6 @@ export async function runParsingCycle(context = { reason: 'scheduled' }) {
     }
   }
 
-  console.log('Цикл парсинга завершён');
+  logStep('✅ Цикл парсинга завершён');
   await sendCycleSummary(owners.length, processedCount, errors, errors.length ? 'в ходе обработки' : undefined);
 }

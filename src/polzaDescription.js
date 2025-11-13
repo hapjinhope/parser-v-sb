@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import fetch from 'node-fetch';
+import { notifyLog } from './notifications.js';
 
 const cache = new Map();
 const DATA_PLACEHOLDER = '{{DATA_JSON}}';
@@ -92,6 +93,7 @@ export async function generateDescription(item = {}, owner = {}, options = {}) {
   };
 
   try {
+    console.log('🧠 Отправляю запрос в Polza AI');
     const response = await fetch(options.apiUrl, {
       method: 'POST',
       headers: {
@@ -102,10 +104,18 @@ export async function generateDescription(item = {}, owner = {}, options = {}) {
     });
     if (!response.ok) throw new Error(`Polza AI ${response.status}`);
     const json = await response.json();
+    console.log('🧠 Получен ответ от Polza AI');
     const reply = resolveText(json);
-    if (reply) return reply.trim();
+    if (reply) {
+      console.log('🧠 Polza AI вернул текст');
+      return reply.trim();
+    }
+    await notifyLog('Polza AI вернул пустой ответ — использую fallback.');
+    console.log('🧠 Polza AI пустой ответ, fallback');
     return fallback;
   } catch (error) {
+    await notifyLog(`Polza AI ошибка: ${error.message}`);
+    console.log('🧠 Polza AI ошибка:', error.message);
     return fallback;
   }
 }
