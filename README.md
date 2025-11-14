@@ -20,6 +20,7 @@ This utility runs as a lightweight scheduler + webhook receiver. It looks for en
 - `TELEGRAM_STATUS_TOPIC_ID` – optional topic/thread within the status chat (set to `2` if your channel uses threads); status messages still land in that topic.
 - `TELEGRAM_LOG_BOT_TOKEN` / `TELEGRAM_LOG_CHAT_ID` – bot/token that receives logging messages and operational alerts (channel `https://t.me/c/3401481436/2`).
 - `TELEGRAM_LOG_TOPIC_ID` – leave empty when вы убрали темы; заполните номер темы, если хотите отправлять сообщения в конкретный тред.
+- `LOG_TELEGRAM_REQUESTS` – set to `false`, если не хотите видеть в консоли строки “Отправка Telegram-сообщения…”.
 - `POLZA_API_URL` / `POLZA_API_KEY` – endpoint and key for generating descriptions via Polza AI.
 - `POLZA_MODEL`, `POLZA_PROMPT_FILE`, `POLZA_MAX_TOKENS`, `POLZA_TEMPERATURE` – optional Polza settings; set `POLZA_MODEL` to whichever Polza variant you need (e.g., `polza-1` or `polza-2`), the prompt defaults to `prompts/description.txt`, and `POLZA_MODEL_OPTIONS` lists the variants you can switch between.
 - `PUBLIC_BASE_URL` – публичный адрес сервиса (используется для кнопки “✅ Баланс пополнен, продолжить”).

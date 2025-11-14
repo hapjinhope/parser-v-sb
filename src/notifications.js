@@ -6,6 +6,7 @@ const STATUS_TOPIC_ID = process.env.TELEGRAM_STATUS_TOPIC_ID;
 const LOG_BOT_TOKEN = process.env.TELEGRAM_LOG_BOT_TOKEN;
 const LOG_CHAT_ID = process.env.TELEGRAM_LOG_CHAT_ID;
 const LOG_TOPIC_ID = process.env.TELEGRAM_LOG_TOPIC_ID;
+const LOG_TELEGRAM_REQUESTS = (process.env.LOG_TELEGRAM_REQUESTS || 'true').toLowerCase() !== 'false';
 
 const CHAT_LABELS = new Map([
   [STATUS_CHAT_ID, 'Статус'],
@@ -34,11 +35,13 @@ async function sendTelegramMessage(token, chatId, text, options = {}) {
   }
 
   try {
-    console.log(
-      `Отправка Telegram-сообщения в чат ${describeChat(chatId)}${
-        options.message_thread_id ? ' (тема ' + options.message_thread_id + ')' : ''
-      }`
-    );
+    if ( LOG_TELEGRAM_REQUESTS ) {
+      console.log(
+        `Отправка Telegram-сообщения в чат ${describeChat(chatId)}${
+          options.message_thread_id ? ' (тема ' + options.message_thread_id + ')' : ''
+        }`
+      );
+    }
     const response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -49,10 +52,12 @@ async function sendTelegramMessage(token, chatId, text, options = {}) {
       console.error('Ошибка Telegram:', data);
       return false;
     }
-    console.log('Telegram-сообщение отправлено', {
-      chat: describeChat(chatId),
-      messageId: data.result?.message_id
-    });
+    if (LOG_TELEGRAM_REQUESTS) {
+      console.log('Telegram-сообщение отправлено', {
+        chat: describeChat(chatId),
+        messageId: data.result?.message_id
+      });
+    }
     return true;
   } catch (error) {
     console.error('Ошибка запроса Telegram:', error);
