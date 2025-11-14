@@ -5,7 +5,7 @@ import { notifyLog } from './notifications.js';
 
 dotenv.config();
 
-const PORT = parseInt(process.env.WEBHOOK_PORT, 10) || 3000;
+const PORT = parseInt(process.env.PORT || process.env.WEBHOOK_PORT, 10) || 3000;
 const INTERVAL_MS = parseInt(process.env.CHECK_INTERVAL_MS, 10) || 5 * 60 * 1000;
 const WEBHOOK_SECRET = process.env.SUPABASE_WEBHOOK_SECRET;
 const ANTIZNAK_RESUME_TOKEN = process.env.ANTIZNAK_RESUME_TOKEN;

@@ -114,7 +114,7 @@ async function handleParserFailure(owner, reason, fatalMessage = PARSER_NO_DATA_
   const text = `Ошибка парсинга owners ${owner?.id ?? 'unknown'}: ${reason}`;
   await notifyLog(text);
   if (haltOnParserFailure) {
-    throw new Error(fatalMessage);
+    throw new Error(reason || fatalMessage);
   }
 }
 
