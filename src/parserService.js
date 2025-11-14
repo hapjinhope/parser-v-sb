@@ -73,7 +73,7 @@ async function markOwnerErrorStatus(ownerId, reason) {
   if (!ownerId) return;
   const payload = {
     parsed: 'error',
-    status: 'error',
+    status: false,
     updated_at: new Date().toISOString()
   };
   const { error } = await supabase.from('owners').update(payload).eq('id', ownerId);
