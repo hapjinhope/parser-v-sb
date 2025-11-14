@@ -91,10 +91,8 @@ function resolveParserProblem(payload) {
     .toLowerCase();
   const success = payload.success;
   const ok = payload.ok;
-  const isErrorStatus =
-    statusText &&
-    !['ok', 'success', 'done', 'published', 'ready', 'processed'].includes(statusText) &&
-    !statusText.startsWith('publi');
+  const okStatuses = ['ok', 'success', 'done', 'published', 'ready', 'processed', 'active', 'unpublished'];
+  const isErrorStatus = statusText && !okStatuses.includes(statusText) && !statusText.startsWith('publi');
   if (isErrorStatus) {
     return payload.message || payload.error || `Статус парсера: ${statusText}`;
   }
