@@ -32,7 +32,10 @@ const {
   AGENT_ID = '132466118',
   PUBLIC_BASE_URL,
   ANTIZNAK_RESUME_TOKEN,
-  SUPABASE_STORAGE_BUCKET
+  SUPABASE_STORAGE_BUCKET,
+  ANTIZNAK_INITIAL_DELAY_MS = '3000',
+  ANTIZNAK_RETRY_DELAY_MS = '15000',
+  ANTIZNAK_MAX_ATTEMPTS = '6'
 } = process.env;
 
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
@@ -46,10 +49,18 @@ let antiznakPaused = false;
 let lastAntiznakBalance = null;
 const sanitizedBaseUrl = PUBLIC_BASE_URL ? PUBLIC_BASE_URL.replace(/\/+$/, '') : null;
 const storagePublicBase = SUPABASE_URL ? `${SUPABASE_URL.replace(/\/+$/, '')}/storage/v1/object/public` : null;
+const antiznakInitialDelay = Math.max(0, parseInt(ANTIZNAK_INITIAL_DELAY_MS, 10) || 0);
+const antiznakRetryDelay = Math.max(0, parseInt(ANTIZNAK_RETRY_DELAY_MS, 10) || 15000);
+const antiznakMaxAttempts = Math.max(1, parseInt(ANTIZNAK_MAX_ATTEMPTS, 10) || 6);
 
 function logStep(message) {
   const timestamp = new Date().toLocaleTimeString('ru-RU', { hour12: false });
   console.log(`🕒 ${timestamp} | ${message}`);
+}
+
+function delay(ms) {
+  if (!ms || ms <= 0) return Promise.resolve();
+  return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 function buildResumeUrl() {
@@ -217,8 +228,11 @@ async function fetchParserPayload(url) {
   return response.json();
 }
 
-async function fetchAntiznakPhotos(targetUrl) {
-  logStep('🖼️ Запрашиваю фото и баланс у Антизнака');
+async function fetchAntiznakPhotos(targetUrl, options = {}) {
+  const { silent = false } = options;
+  if (!silent) {
+    logStep('🖼️ Запрашиваю фото и баланс у Антизнака');
+  }
   if (!ANTIZNAK_API_KEY || !targetUrl) {
     return { photos: [], balance: null };
   }
@@ -235,13 +249,17 @@ async function fetchAntiznakPhotos(targetUrl) {
       throw new Error(`Antiznak ${response.status}`);
     }
     const json = await response.json();
-    logStep('🖼️ Ответ Антизнака получен');
+    if (!silent) {
+      logStep('🖼️ Ответ Антизнака получен');
+    }
     if (json?.status === 'error') {
       const errText = json?.text ?? 'ошибка Antiznak';
       const errCode = json?.err_code ?? '0';
       const balanceValue = normalizeBalance(json?.balance ?? null);
-      await notifyLog(`Антизнак ошибка ${errCode}: ${errText}`);
-      console.warn(`Антизнак ответил ошибкой ${errCode}: ${errText}`);
+      if (!silent) {
+        await notifyLog(`Антизнак ошибка ${errCode}: ${errText}`);
+        console.warn(`Антизнак ответил ошибкой ${errCode}: ${errText}`);
+      }
       return {
         photos: [],
         balance: balanceValue
@@ -269,13 +287,39 @@ async function fetchAntiznakPhotos(targetUrl) {
       lastAntiznakBalance = balance;
     }
     const photos = normalizePhotoList(rawPhotos);
-    logStep(`🖼️ Антизнак вернул ${photos.length} фото, баланс ${balance ?? 'не указан'}`);
+    if (!silent) {
+      logStep(`🖼️ Антизнак вернул ${photos.length} фото, баланс ${balance ?? 'не указан'}`);
+    }
     return { photos, balance };
   } catch (error) {
-    logStep(`🖼️ Антизнак вернул ошибку: ${error.message}`);
-    await notifyLog(`Антизнак не ответил: ${error.message}`);
+    if (!silent) {
+      logStep(`🖼️ Антизнак вернул ошибку: ${error.message}`);
+      await notifyLog(`Антизнак не ответил: ${error.message}`);
+    }
     return { photos: [], balance: null };
   }
+}
+
+async function fetchAntiznakPhotosWithRetry(ownerUrl) {
+  if (!ownerUrl) return { photos: [], balance: null };
+  if (antiznakInitialDelay > 0) {
+    await delay(antiznakInitialDelay);
+  }
+  let attempt = 0;
+  let latestResult = { photos: [], balance: null };
+  while (attempt < antiznakMaxAttempts) {
+    const silent = attempt > 0;
+    latestResult = await fetchAntiznakPhotos(ownerUrl, { silent });
+    if (latestResult.photos.length > 0) {
+      return latestResult;
+    }
+    attempt += 1;
+    if (attempt >= antiznakMaxAttempts) {
+      break;
+    }
+    await delay(antiznakRetryDelay);
+  }
+  return latestResult;
 }
 
 async function handleUnpublished(owner) {
@@ -321,7 +365,7 @@ async function processOwner(owner) {
   }
 
   const parserPhotos = Array.isArray(findValue(item, 'photos')) ? findValue(item, 'photos') : [];
-  const { photos: antiznakPhotos, balance: antiznakBalance } = await fetchAntiznakPhotos(owner.url);
+  const { photos: antiznakPhotos, balance: antiznakBalance } = await fetchAntiznakPhotosWithRetry(owner.url);
   const balanceOk = await handleAntiznakBalance(antiznakBalance);
   if (!balanceOk) {
     throw new Error('Баланс антизнака 0');

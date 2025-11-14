@@ -25,6 +25,7 @@ This utility runs as a lightweight scheduler + webhook receiver. It looks for en
 - `PUBLIC_BASE_URL` – публичный адрес сервиса (используется для кнопки “✅ Баланс пополнен, продолжить”).
 - `ANTIZNAK_RESUME_TOKEN` – токен, который должен совпадать в `/antiznak/resume?token=…`, чтобы возобновить работу после пополнения баланса.
 - `SUPABASE_STORAGE_BUCKET` – имя публичного бакета Storage, куда складываются фото Антизнака (в `objects` сохраняются именно эти постоянные ссылки).
+- `ANTIZNAK_INITIAL_DELAY_MS` / `ANTIZNAK_RETRY_DELAY_MS` / `ANTIZNAK_MAX_ATTEMPTS` – регулируют ожидание фотографий от Антизнака: первая пауза перед запросом, интервал между повторными проверками (по умолчанию 15 секунд) и максимальное число попыток, прежде чем сообщить об ошибке “Нет фото от Антизнака”.
 
 ## Prompt file
 The file `prompts/description.txt` controls how Polza AI receives the listing data. The script replaces `{{DATA_JSON}}` with the current payload before calling the API. Update it if you need a different tone or more fields in the prompt.
