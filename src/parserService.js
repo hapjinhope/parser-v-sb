@@ -42,6 +42,12 @@ if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
   throw new Error('`SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are required to run the parser');
 }
 
+const STRICT_PARSER_ENDPOINTS = new Set(['https://parser-links-production-3a00.up.railway.app/parse']);
+const normalizedParserEndpoint = (PARSER_ENDPOINT || '').replace(/\/+$/, '');
+const haltOnParserFailure = STRICT_PARSER_ENDPOINTS.has(normalizedParserEndpoint);
+const PARSER_NO_DATA_ERROR = 'Парсер не вернул данные';
+const PARSER_UNAVAILABLE_ERROR = 'Парсер не ответил';
+
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 const MAIN_PHOTO_INDEX = 1;
 const agentId = parseInt(AGENT_ID, 10) || 132466118;
@@ -61,6 +67,55 @@ function logStep(message) {
 function delay(ms) {
   if (!ms || ms <= 0) return Promise.resolve();
   return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function markOwnerErrorStatus(ownerId, reason) {
+  if (!ownerId) return;
+  const payload = {
+    parsed: 'error',
+    status: 'error',
+    updated_at: new Date().toISOString()
+  };
+  const { error } = await supabase.from('owners').update(payload).eq('id', ownerId);
+  if (error) {
+    console.error(`Не удалось обновить статус owners ${ownerId} на error:`, error.message);
+  } else if (reason) {
+    console.log(`owners ${ownerId} отмечен как error: ${reason}`);
+  }
+}
+
+function resolveParserProblem(payload) {
+  if (!payload) return 'Ответ парсера пуст';
+  const statusText = String(payload.status ?? '')
+    .trim()
+    .toLowerCase();
+  const success = payload.success;
+  const ok = payload.ok;
+  const isErrorStatus =
+    statusText &&
+    !['ok', 'success', 'done', 'published', 'ready', 'processed'].includes(statusText) &&
+    !statusText.startsWith('publi');
+  if (isErrorStatus) {
+    return payload.message || payload.error || `Статус парсера: ${statusText}`;
+  }
+  if (success === false || ok === false) {
+    return payload.message || payload.error || 'Парсер вернул success=false';
+  }
+  if (typeof payload.error === 'string' && payload.error.trim()) {
+    return payload.error.trim();
+  }
+  return null;
+}
+
+async function handleParserFailure(owner, reason, fatalMessage = PARSER_NO_DATA_ERROR) {
+  if (owner?.id) {
+    await markOwnerErrorStatus(owner.id, reason);
+  }
+  const text = `Ошибка парсинга owners ${owner?.id ?? 'unknown'}: ${reason}`;
+  await notifyLog(text);
+  if (haltOnParserFailure) {
+    throw new Error(fatalMessage);
+  }
 }
 
 function buildResumeUrl() {
@@ -301,7 +356,7 @@ async function fetchAntiznakPhotos(targetUrl, options = {}) {
 }
 
 async function fetchAntiznakPhotosWithRetry(ownerUrl) {
-  if (!ownerUrl) return { photos: [], balance: null };
+  if (!ownerUrl) return { photos: [], balance: null, attempts: 0 };
   if (antiznakInitialDelay > 0) {
     await delay(antiznakInitialDelay);
   }
@@ -311,7 +366,7 @@ async function fetchAntiznakPhotosWithRetry(ownerUrl) {
     const silent = attempt > 0;
     latestResult = await fetchAntiznakPhotos(ownerUrl, { silent });
     if (latestResult.photos.length > 0) {
-      return latestResult;
+      return { ...latestResult, attempts: attempt + 1 };
     }
     attempt += 1;
     if (attempt >= antiznakMaxAttempts) {
@@ -319,7 +374,7 @@ async function fetchAntiznakPhotosWithRetry(ownerUrl) {
     }
     await delay(antiznakRetryDelay);
   }
-  return latestResult;
+  return { ...latestResult, attempts: antiznakMaxAttempts };
 }
 
 async function handleUnpublished(owner) {
@@ -344,13 +399,19 @@ async function processOwner(owner) {
     parserPayload = await fetchParserPayload(owner.url);
     logStep(`🧾 Получены данные внешнего парсера для owners ${owner.id}`);
   } catch (error) {
-    await notifyLog(`Ошибка парсинга owners ${owner.id}: парсер не ответил (${error.message})`);
+    await handleParserFailure(owner, `парсер не ответил (${error.message})`, PARSER_UNAVAILABLE_ERROR);
+    return;
+  }
+
+  const parserProblem = resolveParserProblem(parserPayload);
+  if (parserProblem) {
+    await handleParserFailure(owner, parserProblem, PARSER_NO_DATA_ERROR);
     return;
   }
 
   const item = extractItem(parserPayload);
   if (!item) {
-    await notifyLog(`Ошибка парсинга owners ${owner.id}: парсер вернул пустой элемент`);
+    await handleParserFailure(owner, 'парсер вернул пустой элемент', PARSER_NO_DATA_ERROR);
     return;
   }
 
@@ -365,13 +426,17 @@ async function processOwner(owner) {
   }
 
   const parserPhotos = Array.isArray(findValue(item, 'photos')) ? findValue(item, 'photos') : [];
-  const { photos: antiznakPhotos, balance: antiznakBalance } = await fetchAntiznakPhotosWithRetry(owner.url);
+  const {
+    photos: antiznakPhotos,
+    balance: antiznakBalance,
+    attempts: antiznakAttempts
+  } = await fetchAntiznakPhotosWithRetry(owner.url);
   const balanceOk = await handleAntiznakBalance(antiznakBalance);
   if (!balanceOk) {
     throw new Error('Баланс антизнака 0');
   }
   if (antiznakPhotos.length === 0) {
-    const warningMessage = '⚠️ Антизнак не вернул фото — парсинг остановлен до проверки.';
+    const warningMessage = `⚠️ Антизнак не вернул фото для owners ${owner.id} после ${antiznakAttempts} попыток — парсинг остановлен до проверки.`;
     logStep(warningMessage);
     await notifyLog(warningMessage);
     throw new Error('Нет фото от Антизнака');
@@ -591,6 +656,7 @@ export async function runParsingCycle(context = { reason: 'scheduled' }) {
   logStep(`⚙️ Обрабатывается ${owners.length} объектов`);
 
   let halted = false;
+  const fatalErrors = new Set(['Нет фото от Антизнака', PARSER_NO_DATA_ERROR, PARSER_UNAVAILABLE_ERROR]);
   for (const owner of owners) {
     if (halted) break;
     try {
@@ -600,8 +666,10 @@ export async function runParsingCycle(context = { reason: 'scheduled' }) {
       console.error('processOwner error', owner.id, error);
       const errMessage = `owners ${owner.id}: ${error.message}`;
       errors.push(errMessage);
-      await notifyLog(`Ошибка парсинга owners ${owner.id}: ${error.message}`);
-      if (error.message === 'Нет фото от Антизнака') {
+      if (!fatalErrors.has(error.message)) {
+        await notifyLog(`Ошибка парсинга owners ${owner.id}: ${error.message}`);
+      }
+      if (fatalErrors.has(error.message)) {
         halted = true;
       }
     }
