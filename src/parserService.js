@@ -403,6 +403,11 @@ async function processOwner(owner) {
   const parserProblem = resolveParserProblem(parserPayload);
   if (parserProblem) {
     await handleParserFailure(owner, parserProblem, PARSER_NO_DATA_ERROR);
+    if (parserProblem === 'unpublished') {
+      console.log('🔁 Парсер сообщил, что объявление снято, повторяю попытку через 2 сек…');
+      await delay(2000);
+      return processOwner(owner);
+    }
     return;
   }
 
