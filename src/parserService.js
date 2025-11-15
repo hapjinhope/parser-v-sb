@@ -376,7 +376,6 @@ async function fetchAntiznakPhotosWithRetry(ownerUrl) {
 }
 
 async function handleUnpublished(owner) {
-  await supabase.from('objects').delete().eq('owners_id', owner.id);
   await supabase.from('owners').delete().eq('id', owner.id);
   const text =
     `⚠️ <b>Объявление ${owner.url} было снято с публикации</b>\n` +
